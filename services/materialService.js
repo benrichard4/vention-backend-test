@@ -1,4 +1,4 @@
-const { find, update } = require("../models/material");
+const { find, update, create } = require("../models/material");
 
 const MaterialService = () => {
   const getMaterial = async (id) => {
@@ -9,9 +9,20 @@ const MaterialService = () => {
     return update(id, powerLevel);
   };
 
+  const deleteMaterial = async (id) => {
+    const material = await find(id);
+    return material.delete(id);
+  };
+
+  const createMaterial = async (payload) => {
+    return create(payload);
+  };
+
   return {
     getMaterial,
     updateMaterial,
+    deleteMaterial,
+    createMaterial,
   };
 };
 
