@@ -61,13 +61,17 @@ router.delete("/:id", async (req, res) => {
 // power_level,
 // qty,
 // deleted at
-// composition
 //}
 router.post("", async (req, res) => {
   try {
     //get created Material
     const createdMaterial = await MaterialService().createMaterial(req.body);
-    //update weapon status if necessary
+    //update weapon status if necessary (uses createdMaterial.id, to be sure that the weapon only gets updated if the material was succesfully created)
+    if (!createdMaterial) {
+      throw new Error(
+        "ID must be between 1 and 12. Cannot yet create other IDs"
+      );
+    }
     const updatedWeapon = await WeaponService().updateWeaponStatus(
       createdMaterial.id,
       "new"

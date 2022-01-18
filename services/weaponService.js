@@ -4,11 +4,14 @@ const {
   updateStatus,
 } = require("../models/weapon");
 
-const { findAll } = require("../models/material");
+const { getParentIds } = require("../models/material");
 
+//Weapon service handles the business logic of the weapon class.
 const WeaponService = () => {
   const updateWeaponPowerLevel = async (matId) => {
-    return updatePowerLevel(matId);
+    const parentMaterials = await getParentIds(matId);
+    const matIds = [...parentMaterials, Number(matId)];
+    return updatePowerLevel(matIds);
   };
 
   const getWeaponQuantity = async (id) => {
@@ -17,9 +20,10 @@ const WeaponService = () => {
   };
 
   const updateWeaponStatus = async (matId, status) => {
-    const material = await findAll(matId);
-    const parentMaterials = await material.getParentIds(matId);
+    //const material = await findAll(matId);
+    const parentMaterials = await getParentIds(matId);
     const matIds = [...parentMaterials, matId];
+    await updatePowerLevel(matIds);
     return updateStatus(matIds, status);
   };
 

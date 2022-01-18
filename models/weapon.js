@@ -28,24 +28,33 @@ class Weapon {
   }
 
   ///////////////////////////
-  //  UPDATEPOWERLEVEL     //
+  //  UPDATE POWER LEVEL   //
   ///////////////////////////
-  //method that updates the powerlevel of all weapons that are constructed with the material being passed in the argument.
-  static async updatePowerLevel(mat_id) {
+  //method that updates the powerlevel of all weapons that are constructed with the materials being passed in the argument.
+  static async updatePowerLevel(matIds) {
     try {
-      //find all weapons that use the material passed into function
-      let foundWeaponsObjArr = await db(mwTable)
-        .where("material_id", mat_id)
-        .select("weapon_id");
-      const weaponsToBeUpdated = foundWeaponsObjArr.map(
-        (weaponObj) => weaponObj.weapon_id
-      );
+      const totalWeaponsToBeUpdated = [];
+      for (const matId of matIds) {
+        //find all weapons that use the materials passed into function
+        let foundWeaponsObjArr = await db(mwTable)
+          .where("material_id", matId)
+          .select("weapon_id");
+        const weaponsToBeUpdated = foundWeaponsObjArr.map(
+          (weaponObj) => weaponObj.weapon_id
+        );
+
+        weaponsToBeUpdated.forEach((weapon) => {
+          if (!totalWeaponsToBeUpdated.includes(weapon)) {
+            totalWeaponsToBeUpdated.push(weapon);
+          }
+        });
+      }
 
       //initialize updatedWeapons array
       const updatedWeapons = [];
 
       //cycle though each weapon id to be updated and update the weapon using the getPowerLevel method.
-      for (const weaponId of weaponsToBeUpdated) {
+      for (const weaponId of totalWeaponsToBeUpdated) {
         //use find method to find weapon based on id
         let foundWeapon = await Weapon.findWeapon(weaponId);
 
@@ -69,7 +78,7 @@ class Weapon {
   }
 
   ///////////////////////////
-  //  GETPOWERLEVEL        //
+  //  GET POWER LEVEL      //
   ///////////////////////////
   //method that gets power level of weapon by id
   async getPowerLevel(id) {
@@ -98,17 +107,17 @@ class Weapon {
   }
 
   /////////////////////////////////////
-  //  GETMATERIALTOTALPOWERLEVEL     //
+  //  GET MATERIAL TOTAL POWER LEVEL //
   /////////////////////////////////////
   //method that gets material's total power level based on its composition. (recursive function)
-  async getMaterialTotalPowerLevel(mat_id) {
+  async getMaterialTotalPowerLevel(matId) {
     try {
       //get power level of material from material table
-      let foundMaterial = await db(mTable).where("id", mat_id).first();
+      let foundMaterial = await db(mTable).where("id", matId).first();
       let materialPowerLevel = foundMaterial.power_level;
 
       //get material composition from composition table
-      let materialCompositionArr = await db(cTable).where("parent_id", mat_id);
+      let materialCompositionArr = await db(cTable).where("parent_id", matId);
 
       //if material composition array is empty, return materialPowerLevel . Else -> see notes in else
       if (materialCompositionArr.length === 0) {
@@ -132,7 +141,7 @@ class Weapon {
   }
 
   /////////////////////////////////////
-  //  GETMAXQUANTITY                 //
+  //  GET MAX QUANTITY               //
   /////////////////////////////////////
   //method that calculates max quantity of weapon based on weapon id
   async getMaxQuantity(id) {
@@ -166,17 +175,17 @@ class Weapon {
   }
 
   /////////////////////////////////////
-  //  GETMATERIALMAXQTY              //
+  //  GET MATERIAL MAX QTY           //
   /////////////////////////////////////
   //recursive method that finds the max quantity a material can provide based on its composition and qty in stock
-  async getMaterialMaxQty(mat_id) {
+  async getMaterialMaxQty(matId) {
     try {
       //get quantity of parent material from material table
-      let foundParentMaterial = await db(mTable).where("id", mat_id).first();
+      let foundParentMaterial = await db(mTable).where("id", matId).first();
       let parentMaterialQty = foundParentMaterial.qty;
 
       //get material composition from composition table
-      let materialCompositionArr = await db(cTable).where("parent_id", mat_id);
+      let materialCompositionArr = await db(cTable).where("parent_id", matId);
 
       //if material composition array is empty, return parentMaterialQty. Else -> see notes in else
       if (materialCompositionArr.length === 0) {
@@ -200,9 +209,9 @@ class Weapon {
   }
 
   /////////////////////////////////////
-  //  UPDATESTATUS                   //
+  //  UPDATE STATUS                  //
   /////////////////////////////////////
-  //method that is called when a material is deleted to determine if a weapon should break, take in an array of ids, and a method ("broken" or "new")
+  //method that is called when a material is deleted or created to determine if a weapon should break or be fixed to new, take in an array of ids, and a status ("broken" or "new")
   static async updateStatus(matIds, status) {
     try {
       //initialize updatedWeapons array
@@ -220,14 +229,52 @@ class Weapon {
         //cycle though each weapon id to be updated and update the weapon.
         for (const weaponId of weaponsToBeUpdated) {
           //update the weapon table with the new status and assign newWeaponDef as updated weapon
-          let [newWeaponDef] = await db(wTable)
-            .where("id", weaponId)
-            .update({ status: status })
-            .returning("*");
+          if (status === "broken") {
+            let [newWeaponDef] = await db(wTable)
+              .where("id", weaponId)
+              .update({ status: status })
+              .returning("*");
 
-          //push newWeaponDef to updatedWeaons if it's not already there
-          if (!updatedWeapons.includes(newWeaponDef)) {
-            updatedWeapons.push(newWeaponDef);
+            //push newWeaponDef to updatedWeaons if it's not already there
+            if (!updatedWeapons.some((e) => e.name === newWeaponDef.name)) {
+              updatedWeapons.push(newWeaponDef);
+            }
+          } else if (status === "new") {
+            //check to see if any top level material in the weapon is deleted. If it is, don't update to new, if they are all.
+
+            //get all top level materials of given weaponId
+            let topLevelMaterialsObjArr = await db(mwTable)
+              .where("weapon_id", weaponId)
+              .select("material_id");
+            let topLevelMaterials = topLevelMaterialsObjArr.map(
+              (materials) => materials.material_id
+            );
+
+            //get array of all top level materials deleted_at values
+            let isDeletedObjArr = await db
+              .select("id", "deleted_at")
+              .from(mTable)
+              .whereIn("id", topLevelMaterials);
+
+            //define empty array to hold potential deleted materials
+            const deletedTopLevelMaterials = [];
+            //cycle through ObjArr and push each item that has a deleted_at timestamp to deletedAt array
+            isDeletedObjArr.forEach((object) => {
+              if (object.deleted_at) {
+                deletedTopLevelMaterials.push(object);
+              }
+            });
+
+            //if deletedTopLevelMaterials is empty, it means it is ok to now set the weapon back to new
+            if (deletedTopLevelMaterials.length === 0) {
+              let [newWeaponDef] = await db(wTable)
+                .where("id", weaponId)
+                .update({ status: status })
+                .returning("*");
+              if (!updatedWeapons.some((e) => e.name === newWeaponDef.name)) {
+                updatedWeapons.push(newWeaponDef);
+              }
+            }
           }
         }
       }
